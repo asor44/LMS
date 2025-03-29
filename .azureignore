@@ -1,0 +1,53 @@
+# Exclude everything by default
+*
+**/*
+
+# Explicitly include only required files
+!requirements.txt
+!main.py
+!database.py
+!models.py
+!utils.py
+!pages/*.py
+!static/footer.html
+!static/style.css
+!.streamlit/config.toml
+!startup.txt
+!attached_assets/orion_logo.png
+!attached_assets/téléchargement (1).jpg
+
+# Ensure cache directories are excluded
+**/__pycache__/
+**/.cache/
+**/.pythonlibs/
+**/.upm/
+**/.local/
+**/.config/
+**/.git/
+**/node_modules/
+
+# Python cache files
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+
+# Development files
+.Python
+.env
+.venv
+*.log
+.replit
+replit.nix
+pyproject.toml
+uv.lock
+package.json
+package-lock.json
+
+# Generated files
+*.map
+*-dev.js
+*.development.js
+generated-icon.png
