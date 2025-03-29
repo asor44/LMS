@@ -27,8 +27,11 @@ try:
 
     # Initialize database
     logger.info("Initializing database...")
-    database.init_db()
-    logger.info("Database initialized successfully")
+    try:
+        database.init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error loading database {e}")
 
     # Charger le CSS personnalisé
     def load_css():
