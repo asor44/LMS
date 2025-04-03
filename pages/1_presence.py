@@ -1,11 +1,14 @@
-import streamlit as st
-from models import User, Activity
-from datetime import datetime, date
-from utils import generate_qr_code
-import database
+from datetime import datetime
+
 import cv2
-from pyzbar.pyzbar import decode
 import numpy as np
+import streamlit as st
+from pyzbar.pyzbar import decode
+
+from models.Activities import Activity
+from models.User import User
+from utils import generate_qr_code
+
 
 def check_authentication():
     if 'user' not in st.session_state or st.session_state.user is None:

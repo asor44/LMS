@@ -1,6 +1,10 @@
+from datetime import time
+
 import streamlit as st
-from models import Activity, Inventory
-from datetime import datetime, time
+
+from models.Activities import Activity
+from models.Inventory import Inventory
+
 
 def check_authentication():
     if 'user' not in st.session_state or st.session_state.user is None:

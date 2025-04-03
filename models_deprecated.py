@@ -894,7 +894,6 @@ class User:
             cur.close()
             conn.close()
 
-
 class Activity:
     def __init__(self, id: int, name: str, description: str, date: datetime, start_time: time,
                  end_time: time, max_participants: int, location: str = None,
@@ -1056,7 +1055,6 @@ class Activity:
         finally:
             cur.close()
             conn.close()
-
 
 class Badge:
     def __init__(self, id: int, name: str, description: str, icon_name: str, points_required: int):

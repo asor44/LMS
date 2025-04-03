@@ -1,8 +1,8 @@
 import streamlit as st
-from models import User, Role, Permission
+
+from models_deprecated import User, Role, Permission
 from utils import validate_email
-import io
-import csv
+
 
 def check_admin():
     """Verify admin access rights"""
