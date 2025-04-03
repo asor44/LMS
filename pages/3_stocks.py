@@ -1,10 +1,12 @@
 import streamlit as st
 from models_deprecated import Inventory, InventoryCategory, CategoryField, User, EquipmentAssignment, EquipmentRequest
 
+
 def check_authentication():
     if 'user' not in st.session_state or st.session_state.user is None:
         st.error("Veuillez vous connecter")
         st.stop()
+
 
 def affichage_parents(user):
     st.subheader("Équipements de vos enfants")
@@ -30,6 +32,7 @@ def affichage_parents(user):
                             st.write(f"- Date d'assignation: {assignment.assigned_at.strftime('%d/%m/%Y')}")
     else:
         st.info("Aucun équipement n'est actuellement assigné à vos enfants")
+
 
 def affichage_cadets(user):
     st.subheader("Mes équipements")
@@ -123,6 +126,7 @@ def affichage_cadets(user):
                 st.session_state.change_mode = "nouveau"
                 st.session_state.selected_item_for_change = None
                 st.rerun()
+
 
 def affichage_gestionnaire():
     # Interface d'administration complète
@@ -663,33 +667,23 @@ def affichage_gestionnaire():
         else:
             st.info("Aucune demande en attente")
 
-def is_admin(user):
-
-
-
 def main():
     check_authentication()
 
     st.title("Gestion des Stocks")
     user = st.session_state.user
 
-    # Vérifier les permissions d'administration et le rôle magasinier
-    is_admin = user.status == 'administration'
-    is_parent = user.status == 'parent'
-    is_storekeeper = user.has_role('magasinier')
-
     # Si l'utilisateur est un magasinier ou un admin, afficher l'interface complète
-    if is_storekeeper or is_admin:
+    if user.status == 'administration' or user.has_role('magasinier'):
         affichage_gestionnaire()
+
     # Si l'utilisateur est un parent, afficher uniquement les équipements des enfants
-    elif is_parent:
+    elif user.status == 'parent':
         affichage_parents()
-    else :
-        affichage_cadets()
 
     # Pour tous les autres utilisateurs (cadet, AMC), afficher uniquement leurs équipements
     else:
+        affichage_cadets()
 
-
-if __name__ == "__main__":
-    main()
+    if __name__ == "__main__":
+        main()

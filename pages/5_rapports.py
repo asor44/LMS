@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import generate_pdf_report
+from utils.pdf import PDFGenerator
 from datetime import datetime, timedelta
 
 def check_authentication():
@@ -42,7 +42,7 @@ def main():
             "Ligne 3 du rapport"
         ]
         
-        pdf = generate_pdf_report(data, report_type)
+        pdf = PDFGenerator.generate_pdf_report(data, report_type)
         
         st.download_button(
             "Télécharger le rapport PDF",

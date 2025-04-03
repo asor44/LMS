@@ -1,15 +1,11 @@
 from datetime import time
 
 import streamlit as st
+from utils.authentification import check_authentication
 
 from models.Activities import Activity
 from models.Inventory import Inventory
 
-
-def check_authentication():
-    if 'user' not in st.session_state or st.session_state.user is None:
-        st.error("Veuillez vous connecter")
-        st.stop()
 
 def main():
     check_authentication()
