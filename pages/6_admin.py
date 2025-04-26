@@ -1,7 +1,9 @@
 import streamlit as st
 
-from models_deprecated import User, Role, Permission
-from utils import validate_email
+from models.User import User
+from models.Roles import Role
+from models.Permissions import Permission
+from utils.validators import validator
 
 
 def check_admin():
@@ -112,7 +114,7 @@ def main():
             )
 
             if st.form_submit_button("Créer l'utilisateur"):
-                if not validate_email(email):
+                if not validator.validate_email(email):
                     st.error("Email invalide")
                 elif not password or len(password) < 6:
                     st.error("Le mot de passe doit contenir au moins 6 caractères")
