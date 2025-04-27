@@ -1,69 +1,115 @@
 import os
-import pymysql
-import pymysql.cursors
+import sqlite3
 import logging
-from dotenv import load_dotenv
+import json
+from pathlib import Path
 
-# Charger les variables d'environnement depuis le fichier .env
-load_dotenv()
+# Emplacement de la base de données SQLite
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
+
+class DictCursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        row = self.cursor.__next__()
+        if row is None:
+            raise StopIteration
+        return {
+            description[0]: row[i]
+            for i, description in enumerate(self.cursor.description)
+        }
+
+class Connection:
+    def __init__(self, conn):
+        self.conn = conn
+    
+    def cursor(self):
+        return Cursor(self.conn.cursor())
+    
+    def commit(self):
+        return self.conn.commit()
+    
+    def rollback(self):
+        return self.conn.rollback()
+    
+    def close(self):
+        return self.conn.close()
+
+class Cursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.rows = None
+    
+    def execute(self, query, params=None):
+        # Convertir la requête de type PostgreSQL/MySQL en SQLite
+        query = query.replace('%s', '?')
+        query = query.replace('RETURNING id', '')
+        
+        if params is None:
+            self.cursor.execute(query)
+        else:
+            self.cursor.execute(query, params)
+        
+        return self
+    
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            description[0]: row[i]
+            for i, description in enumerate(self.cursor.description)
+        }
+    
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                description[0]: row[i]
+                for i, description in enumerate(self.cursor.description)
+            })
+        return result
+    
+    def close(self):
+        return self.cursor.close()
+    
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+    
+    def __iter__(self):
+        self.rows = self.fetchall()
+        self.index = 0
+        return self
+    
+    def __next__(self):
+        if self.rows is None or self.index >= len(self.rows):
+            raise StopIteration
+        row = self.rows[self.index]
+        self.index += 1
+        return row
 
 def get_connection():
     try:
-        # Vérifier si les variables d'environnement sont définies
-        required_vars = ['MYSQL_HOST', 'MYSQL_PORT', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_DB']
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
-
-        # Essayons aussi avec les variables PG au cas où
-        if missing_vars:
-            pg_vars = ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE']
-            mysql_vars = {}
-            has_pg_vars = True
-            for i, var in enumerate(pg_vars):
-                if not os.getenv(var):
-                    has_pg_vars = False
-                    break
-                mysql_vars[required_vars[i]] = os.getenv(var)
-            
-            if has_pg_vars:
-                # Utiliser les variables PG à la place
-                logging.info("Utilisation des variables PostgreSQL pour la connexion MySQL")
-                conn = pymysql.connect(
-                    host=os.getenv('PGHOST'),
-                    port=int(os.getenv('PGPORT', 3306)),
-                    user=os.getenv('PGUSER'),
-                    password=os.getenv('PGPASSWORD'),
-                    database=os.getenv('PGDATABASE'),
-                    cursorclass=pymysql.cursors.DictCursor
-                )
-                return conn
-            else:
-                raise ValueError(f"Variables d'environnement manquantes: {', '.join(missing_vars)}. "
-                               "Créez un fichier .env avec ces variables.")
-
-        conn = pymysql.connect(
-            host=os.getenv('MYSQL_HOST'),
-            port=int(os.getenv('MYSQL_PORT', 3306)),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DB'),
-            cursorclass=pymysql.cursors.DictCursor
+        # Créer le répertoire parent si nécessaire
+        Path(os.path.dirname(DB_PATH)).mkdir(parents=True, exist_ok=True)
+        
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        
+        return Connection(conn)
+    except Exception as e:
+        error_msg = (
+            f"Impossible de se connecter à la base de données SQLite: {str(e)}\n"
+            f"Emplacement de la base de données: {DB_PATH}"
         )
-        return conn
-    except pymysql.OperationalError as e:
-        if "Can't connect to MySQL server" in str(e):
-            error_msg = (
-                "Impossible de se connecter à MySQL. Assurez-vous que :\n"
-                "1. MySQL est installé sur votre machine\n"
-                "2. Le service MySQL est démarré\n"
-                "3. Les informations de connexion dans le fichier .env sont correctes\n"
-                "\nPour installer MySQL :\n"
-                "1. Téléchargez-le depuis https://dev.mysql.com/downloads/\n"
-                "2. Suivez les instructions d'installation\n"
-                "3. Créez un fichier .env avec les informations de connexion"
-            )
-            logging.error(error_msg)
-            raise RuntimeError(error_msg) from e
-        raise
+        logging.error(error_msg)
+        raise RuntimeError(error_msg) from e
 
 def init_db():
     conn = get_connection()
@@ -72,8 +118,8 @@ def init_db():
         # Permissions table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS permissions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(50) UNIQUE NOT NULL,
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -82,11 +128,13 @@ def init_db():
         # Users table with additional fields
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                email VARCHAR(255) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                status VARCHAR(50) NOT NULL CHECK (status IN ('parent', 'cadet', 'AMC', 'animateur', 'administration')),
+                id INTEGER PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL CHECK (status IN ('parent', 'cadet', 'AMC', 'animateur', 'administration')),
+                first_name TEXT,
+                rank TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -94,21 +142,21 @@ def init_db():
         # Parent-Child relationship table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS parent_child (
-                parent_id INT,
-                child_id INT,
+                parent_id INTEGER,
+                child_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (parent_id, child_id),
                 FOREIGN KEY (parent_id) REFERENCES users(id),
                 FOREIGN KEY (child_id) REFERENCES users(id),
-                CONSTRAINT check_different_ids CHECK (parent_id != child_id)
+                CHECK (parent_id != child_id)
             )
         """)
 
         # Roles table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS roles (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(50) UNIQUE NOT NULL,
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -117,8 +165,8 @@ def init_db():
         # Role permissions mapping
         cur.execute("""
             CREATE TABLE IF NOT EXISTS role_permissions (
-                role_id INT,
-                permission_id INT,
+                role_id INTEGER,
+                permission_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (role_id, permission_id),
                 FOREIGN KEY (role_id) REFERENCES roles(id),
@@ -129,8 +177,8 @@ def init_db():
         # User roles mapping
         cur.execute("""
             CREATE TABLE IF NOT EXISTS user_roles (
-                user_id INT,
-                role_id INT,
+                user_id INTEGER,
+                role_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, role_id),
                 FOREIGN KEY (user_id) REFERENCES users(id),
@@ -141,13 +189,13 @@ def init_db():
         # Activities table with QR codes
         cur.execute("""
             CREATE TABLE IF NOT EXISTS activities (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
                 description TEXT,
                 date DATE NOT NULL,
                 start_time TIME NOT NULL,
                 end_time TIME NOT NULL,
-                max_participants INT NOT NULL,
+                max_participants INTEGER NOT NULL,
                 entry_qr_code TEXT NOT NULL,
                 exit_qr_code TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -157,8 +205,8 @@ def init_db():
         # Inventory categories table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS inventory_categories (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(100) NOT NULL UNIQUE,
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -167,12 +215,12 @@ def init_db():
         # Inventory table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS inventory (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                item_name VARCHAR(255) NOT NULL,
-                category_id INT,
-                quantity INT NOT NULL DEFAULT 0,
-                unit VARCHAR(50) NOT NULL,
-                min_quantity INT NOT NULL DEFAULT 0,
+                id INTEGER PRIMARY KEY,
+                item_name TEXT NOT NULL,
+                category_id INTEGER,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                unit TEXT NOT NULL,
+                min_quantity INTEGER NOT NULL DEFAULT 0,
                 photo_url TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -183,22 +231,22 @@ def init_db():
         # Add default inventory category if none exists
         cur.execute("SELECT COUNT(*) as count FROM inventory_categories")
         result = cur.fetchone()
-        if result['count'] == 0:
+        if result and result['count'] == 0:
             cur.execute("""
                 INSERT INTO inventory_categories (name, description)
-                VALUES ('Général', 'Catégorie par défaut pour tous les articles')
-            """)
+                VALUES (?, ?)
+            """, ('Général', 'Catégorie par défaut pour tous les articles'))
         
         # Attendance records
         cur.execute("""
             CREATE TABLE IF NOT EXISTS attendance (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                activity_id INT,
-                user_id INT,
+                id INTEGER PRIMARY KEY,
+                activity_id INTEGER,
+                user_id INTEGER,
                 check_in_time TIMESTAMP,
                 qr_code_data TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY (activity_id, user_id),
+                UNIQUE (activity_id, user_id),
                 FOREIGN KEY (activity_id) REFERENCES activities(id),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
@@ -207,69 +255,54 @@ def init_db():
         # Activity equipment table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS activity_equipment (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                activity_id INT,
-                inventory_id INT,
-                quantity_required INT NOT NULL,
+                id INTEGER PRIMARY KEY,
+                activity_id INTEGER,
+                inventory_id INTEGER,
+                quantity_required INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE KEY (activity_id, inventory_id),
+                UNIQUE (activity_id, inventory_id),
                 FOREIGN KEY (activity_id) REFERENCES activities(id),
                 FOREIGN KEY (inventory_id) REFERENCES inventory(id),
-                CONSTRAINT check_quantity_positive CHECK (quantity_required > 0)
-            )
-        """)
-
-        # User notes table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS user_notes (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT,
-                evaluator_id INT,
-                note_date DATE NOT NULL,
-                note_type VARCHAR(50) NOT NULL,
-                rating INT,
-                appreciation TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (evaluator_id) REFERENCES users(id),
-                CONSTRAINT check_rating_range CHECK (rating BETWEEN 1 AND 5)
+                CHECK (quantity_required > 0)
             )
         """)
 
         # Evaluation types table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS evaluation_types (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(100) NOT NULL UNIQUE,
-                min_rating INT NOT NULL DEFAULT 1,
-                max_rating INT NOT NULL DEFAULT 5,
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                min_rating INTEGER NOT NULL DEFAULT 1,
+                max_rating INTEGER NOT NULL DEFAULT 5,
                 description TEXT,
-                active BOOLEAN DEFAULT true,
+                active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT check_min_max_rating CHECK (min_rating <= max_rating)
+                CHECK (min_rating <= max_rating)
             )
         """)
 
-        # Modify user_notes table to reference evaluation_types
-        # MySQL doesn't support ADD COLUMN IF NOT EXISTS directly, so we need to check first
+        # User notes table
         cur.execute("""
-            SELECT COUNT(*) as count 
-            FROM information_schema.COLUMNS 
-            WHERE TABLE_NAME = 'user_notes' 
-            AND COLUMN_NAME = 'evaluation_type_id'
+            CREATE TABLE IF NOT EXISTS user_notes (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                evaluator_id INTEGER,
+                note_date DATE NOT NULL,
+                note_type TEXT NOT NULL,
+                rating INTEGER CHECK (rating BETWEEN 1 AND 5),
+                appreciation TEXT,
+                evaluation_type_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (evaluator_id) REFERENCES users(id),
+                FOREIGN KEY (evaluation_type_id) REFERENCES evaluation_types(id)
+            )
         """)
-        result = cur.fetchone()
-        if result['count'] == 0:
-            cur.execute("""
-                ALTER TABLE user_notes 
-                ADD COLUMN evaluation_type_id INT,
-                ADD FOREIGN KEY (evaluation_type_id) REFERENCES evaluation_types(id)
-            """)
 
         # Insert default evaluation types if none exist
         cur.execute("SELECT COUNT(*) as count FROM evaluation_types")
         result = cur.fetchone()
-        if result['count'] == 0:
+        if result and result['count'] == 0:
             default_types = [
                 ('Comportement', 1, 5, 'Évaluation du comportement général'),
                 ('Participation', 1, 5, 'Niveau de participation aux activités'),
@@ -281,7 +314,7 @@ def init_db():
                 cur.execute("""
                     INSERT INTO evaluation_types 
                     (name, min_rating, max_rating, description)
-                    VALUES (%s, %s, %s, %s)
+                    VALUES (?, ?, ?, ?)
                 """, (name, min_rating, max_rating, description))
 
         # Insert default permissions
@@ -301,9 +334,10 @@ def init_db():
         ]
 
         for perm_name, description in default_permissions:
+            # Use OR IGNORE for SQLite instead of INSERT IGNORE
             cur.execute("""
-                INSERT IGNORE INTO permissions (name, description)
-                VALUES (%s, %s)
+                INSERT OR IGNORE INTO permissions (name, description)
+                VALUES (?, ?)
             """, (perm_name, description))
 
         # Insert default roles with their permissions
@@ -317,31 +351,34 @@ def init_db():
 
         for role_name, description, permissions in default_roles:
             # Insérer le rôle s'il n'existe pas déjà
-            cur.execute("SELECT id FROM roles WHERE name = %s", (role_name,))
+            cur.execute("SELECT id FROM roles WHERE name = ?", (role_name,))
             role_result = cur.fetchone()
             
             if not role_result:
                 cur.execute("""
                     INSERT INTO roles (name, description)
-                    VALUES (%s, %s)
+                    VALUES (?, ?)
                 """, (role_name, description))
-                cur.execute("SELECT LAST_INSERT_ID() as id")
+                
+                # En SQLite, utiliser sqlite_last_insert_rowid() ou juste SELECT last_insert_rowid()
+                cur.execute("SELECT last_insert_rowid() as id")
                 role_result = cur.fetchone()
             
-            role_id = role_result['id']
-            
-            # Ajouter les permissions
-            for perm in permissions:
-                cur.execute("SELECT id FROM permissions WHERE name = %s", (perm,))
-                perm_result = cur.fetchone()
-                if perm_result:
-                    try:
-                        cur.execute("""
-                            INSERT IGNORE INTO role_permissions (role_id, permission_id)
-                            VALUES (%s, %s)
-                        """, (role_id, perm_result['id']))
-                    except:
-                        pass  # Ignorer si la relation existe déjà
+            if role_result:
+                role_id = role_result['id']
+                
+                # Ajouter les permissions
+                for perm in permissions:
+                    cur.execute("SELECT id FROM permissions WHERE name = ?", (perm,))
+                    perm_result = cur.fetchone()
+                    if perm_result:
+                        try:
+                            cur.execute("""
+                                INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+                                VALUES (?, ?)
+                            """, (role_id, perm_result['id']))
+                        except Exception as e:
+                            logging.warning(f"Erreur lors de l'ajout de la permission {perm} au rôle {role_name}: {str(e)}")
 
         # Create default admin user if it doesn't exist
         cur.execute("SELECT * FROM users WHERE email = 'admin@admin.com'")
@@ -352,25 +389,29 @@ def init_db():
             password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
             cur.execute("""
                 INSERT INTO users (email, password_hash, name, status)
-                VALUES ('admin@admin.com', %s, 'Administrateur', 'administration')
-            """, (password_hash,))
+                VALUES (?, ?, ?, ?)
+            """, ('admin@admin.com', password_hash, 'Administrateur', 'administration'))
             
-            cur.execute("SELECT LAST_INSERT_ID() as id")
-            admin_id = cur.fetchone()['id']
+            # Get the last inserted id
+            cur.execute("SELECT last_insert_rowid() as id")
+            admin_id_row = cur.fetchone()
+            if admin_id_row:
+                admin_id = admin_id_row['id']
 
-            # Assign admin role
-            cur.execute("SELECT id FROM roles WHERE name = 'admin'")
-            admin_role = cur.fetchone()
-            if admin_role:
-                try:
-                    cur.execute("""
-                        INSERT INTO user_roles (user_id, role_id)
-                        VALUES (%s, %s)
-                    """, (admin_id, admin_role['id']))
-                except:
-                    pass  # Ignorer si la relation existe déjà
+                # Assign admin role
+                cur.execute("SELECT id FROM roles WHERE name = 'admin'")
+                admin_role = cur.fetchone()
+                if admin_role:
+                    try:
+                        cur.execute("""
+                            INSERT OR IGNORE INTO user_roles (user_id, role_id)
+                            VALUES (?, ?)
+                        """, (admin_id, admin_role['id']))
+                    except Exception as e:
+                        logging.warning(f"Erreur lors de l'ajout du rôle admin à l'utilisateur admin: {str(e)}")
 
         conn.commit()
+        logging.info("Base de données SQLite initialisée avec succès!")
 
     except (RuntimeError, ValueError) as e:
         # Ces erreurs ont déjà des messages détaillés
@@ -378,8 +419,7 @@ def init_db():
     except Exception as e:
         logging.error(f"Erreur lors de l'initialisation de la base de données : {str(e)}")
         raise RuntimeError(
-            "Une erreur est survenue lors de l'initialisation de la base de données. "
-            "Vérifiez que MySQL est correctement installé et configuré."
+            f"Une erreur est survenue lors de l'initialisation de la base de données SQLite: {str(e)}"
         ) from e
     finally:
         if 'cur' in locals():
