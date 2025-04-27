@@ -7,7 +7,7 @@ from pyzbar.pyzbar import decode
 
 from models.Activities import Activity
 from models.User import User
-from utils.qr_code import qr_code
+from utils.qr_code import QRCode
 
 
 def check_authentication():
@@ -96,12 +96,12 @@ def main():
 
                     if selected_activity:
                         entry_data = f"entry_{selected_activity.id}_{datetime.now().strftime('%Y%m%d')}"
-                        entry_qr = qr_code.generate_qr_code(entry_data)
+                        entry_qr = QRCode.generate_qr_code(entry_data)
                         st.markdown("### QR Code d'entrée")
                         st.markdown(f'<img src="data:image/png;base64,{entry_qr}" style="width:300px">', unsafe_allow_html=True)
 
                         exit_data = f"exit_{selected_activity.id}_{datetime.now().strftime('%Y%m%d')}"
-                        exit_qr = qr_code.generate_qr_code(exit_data)
+                        exit_qr = QRCode.generate_qr_code(exit_data)
                         st.markdown("### QR Code de sortie")
                         st.markdown(f'<img src="data:image/png;base64,{exit_qr}" style="width:300px">', unsafe_allow_html=True)
 

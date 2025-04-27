@@ -46,6 +46,7 @@ def init_db():
                 email VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
                 name VARCHAR(255) NOT NULL,
+                first_name VARCHAR(255) NOT NULL,
                 status ENUM('parent', 'cadet', 'AMC', 'animateur', 'administration') NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -97,6 +98,9 @@ def init_db():
             CREATE TABLE IF NOT EXISTS activities (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
+                location VARCHAR(255) NOT NULL,
+                lunch_included BOOLEAN NOT NULL,
+                dinner_included BOOLEAN NOT NULL,
                 description TEXT,
                 date DATE NOT NULL,
                 start_time TIME NOT NULL,
@@ -123,10 +127,29 @@ def init_db():
         """)
 
         cur.execute("""
+                    CREATE TABLE IF NOT EXISTS inventory_categories (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        fields JSON DEFAULT NULL
+                    )
+                """)
+
+        cur.execute("""
             CREATE TABLE IF NOT EXISTS inventory (
-                id INT AUTO_INCREMENT PRIMARY KEY
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                item_name VARCHAR(255) NOT NULL,
+                category_id INT NOT NULL,
+                quantity INT NOT NULL DEFAULT 0,
+                unit VARCHAR(50) NOT NULL,
+                min_quantity INT NOT NULL DEFAULT 0,
+                photo_url TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (category_id) REFERENCES inventory_categories(id)
             )
         """)
+
+
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS activity_equipment (
@@ -166,6 +189,39 @@ def init_db():
                 description TEXT,
                 active BOOLEAN DEFAULT true,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS equipment_assignments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                inventory_id INT NOT NULL,
+                user_id INT NOT NULL,
+                quantity INT NOT NULL DEFAULT 1,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                returned_at TIMESTAMP NULL DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (inventory_id) REFERENCES inventory(id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS equipment_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                equipment_id INT NOT NULL,
+                request_type ENUM('request', 'return') NOT NULL,
+                quantity INT NOT NULL DEFAULT 1,
+                reason TEXT,
+                status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed_at TIMESTAMP NULL DEFAULT NULL,
+                processed_by INT NULL,
+                rejection_reason TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (equipment_id) REFERENCES inventory(id),
+                FOREIGN KEY (processed_by) REFERENCES users(id)
             )
         """)
 
