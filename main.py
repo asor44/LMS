@@ -1,11 +1,9 @@
 import streamlit as st
 import database
-from models import User
-import hashlib
+from models.User import User
 from pathlib import Path
 import base64
 import logging
-import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,6 +31,7 @@ try:
     except Exception as e:
         logger.error(f"Error loading database {e}")
 
+
     # Charger le CSS personnalisé
     def load_css():
         try:
@@ -40,6 +39,7 @@ try:
             st.markdown(f'<style>{css_file}</style>', unsafe_allow_html=True)
         except Exception as e:
             logger.error(f"Error loading CSS: {e}")
+
 
     # Function to load and encode the image
     def get_base64_encoded_image(image_path):
@@ -49,6 +49,7 @@ try:
         except Exception as e:
             logger.error(f"Error loading image {image_path}: {e}")
             return ""
+
 
     # Charger le footer
     def load_footer():
@@ -68,11 +69,13 @@ try:
         except Exception as e:
             logger.error(f"Error loading footer: {e}")
 
+
     def check_authentication():
         if not st.session_state.user:
             st.session_state.authentication_status = False
             st.stop()
         return True
+
 
     def login():
         try:
@@ -88,7 +91,8 @@ try:
             with col2:
                 st.image("attached_assets/téléchargement (1).jpg", width=60, use_container_width=True)
 
-            st.markdown('<h1 style="text-align: center; margin-top: 1rem;">Cadets de la défense de Nantes</h1>', unsafe_allow_html=True)
+            st.markdown('<h1 style="text-align: center; margin-top: 1rem;">Cadets de la défense de Nantes</h1>',
+                        unsafe_allow_html=True)
 
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
@@ -111,6 +115,7 @@ try:
         except Exception as e:
             logger.error(f"Error in login: {e}")
             st.error("Une erreur est survenue lors de la connexion")
+
 
     def main_page():
         try:
@@ -144,6 +149,7 @@ try:
             logger.error(f"Error in main_page: {e}")
             st.error("Une erreur est survenue lors de l'affichage de la page principale")
 
+
     def main():
         try:
             # Load CSS first
@@ -159,6 +165,7 @@ try:
         except Exception as e:
             logger.error(f"Error in main: {e}")
             st.error("Une erreur est survenue lors du chargement de l'application")
+
 
     if __name__ == "__main__":
         main()
