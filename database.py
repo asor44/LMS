@@ -2,6 +2,10 @@ import os
 import pymysql
 import pymysql.cursors
 import logging
+from dotenv import load_dotenv
+
+# Charger les variables d'environnement depuis le fichier .env
+load_dotenv()
 
 def get_connection():
     try:
