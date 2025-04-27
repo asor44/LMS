@@ -1,8 +1,99 @@
 import os
 import sqlite3
+import sqlite3
 import logging
 import json
 from pathlib import Path
+
+# Emplacement de la base de données SQLite
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
+
+class DictCursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        row = self.cursor.__next__()
+        if row is None:
+            raise StopIteration
+        return {
+            description[0]: row[i]
+            for i, description in enumerate(self.cursor.description)
+        }
+
+class Connection:
+    def __init__(self, conn):
+        self.conn = conn
+    
+    def cursor(self):
+        return Cursor(self.conn.cursor())
+    
+    def commit(self):
+        return self.conn.commit()
+    
+    def rollback(self):
+        return self.conn.rollback()
+    
+    def close(self):
+        return self.conn.close()
+
+class Cursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.rows = None
+    
+    def execute(self, query, params=None):
+        # Convertir la requête de type PostgreSQL/MySQL en SQLite
+        query = query.replace('%s', '?')
+        query = query.replace('RETURNING id', '')
+        
+        if params is None:
+            self.cursor.execute(query)
+        else:
+            self.cursor.execute(query, params)
+        
+        return self
+    
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            description[0]: row[i]
+            for i, description in enumerate(self.cursor.description)
+        }
+    
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                description[0]: row[i]
+                for i, description in enumerate(self.cursor.description)
+            })
+        return result
+    
+    def close(self):
+        return self.cursor.close()
+    
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+    
+    def __iter__(self):
+        self.rows = self.fetchall()
+        self.index = 0
+        return self
+    
+    def __next__(self):
+        if self.rows is None or self.index >= len(self.rows):
+            raise StopIteration
+        row = self.rows[self.index]
+        self.index += 1
+        return row
 
 # Emplacement de la base de données SQLite
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
