@@ -1,6 +1,7 @@
 import streamlit as st
-from models import User
-import hashlib
+
+from models.User import User
+
 
 def check_authentication():
     if 'user' not in st.session_state or st.session_state.user is None:

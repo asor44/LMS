@@ -1,7 +1,12 @@
-import streamlit as st
-from models import User, Badge, EvaluationType
 from datetime import datetime, timedelta
+
 import plotly.graph_objs as go
+import streamlit as st
+
+from models.Badges import Badge
+from models.EvaluationType import EvaluationType
+from models.User import User
+
 
 def check_authentication():
     if 'user' not in st.session_state or st.session_state.user is None:

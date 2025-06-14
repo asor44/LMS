@@ -83,7 +83,11 @@ try:
 
             col1, col2, col3 = st.columns([1.5, 1, 1.5])
             with col2:
-                st.image("attached_assets/téléchargement (1).jpg", width=60, use_container_width=True)
+                # Si l'image n'existe pas, utilisons une image par défaut
+                try:
+                    st.image("attached_assets/téléchargement (1).jpg", width=60, use_container_width=True)
+                except:
+                    st.title("📚")
 
             st.markdown('<h1 style="text-align: center; margin-top: 1rem;">Cadets de la défense de Nantes</h1>', unsafe_allow_html=True)
 
@@ -118,7 +122,10 @@ try:
             col1, col2, col3 = st.columns([1.5, 1, 1.5])
             with col2:
                 st.markdown('<div class="main-header">', unsafe_allow_html=True)
-                st.image("attached_assets/téléchargement (1).jpg", width=60, use_container_width=True)
+                try:
+                    st.image("attached_assets/téléchargement (1).jpg", width=60, use_container_width=True)
+                except:
+                    st.title("📚")
                 st.markdown(f'<h1>Bienvenue, {st.session_state.user.name}</h1></div>', unsafe_allow_html=True)
 
             st.markdown("""
