@@ -1,12 +1,15 @@
 import os
 import sqlite3
-import sqlite3
 import logging
 import json
 from pathlib import Path
 
 # Emplacement de la base de données SQLite
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
+# Utilise /app/data dans Docker, sinon le répertoire local
+if os.path.exists('/app/data'):
+    DB_PATH = '/app/data/cadets.db'
+else:
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
 
 class DictCursor:
     def __init__(self, cursor):
