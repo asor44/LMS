@@ -3,10 +3,100 @@ import sqlite3
 import logging
 import json
 from pathlib import Path
-from dotenv import load_dotenv
 
-# Charger les variables d'environnement depuis le fichier .env
-load_dotenv()
+# Emplacement de la base de données SQLite
+# Utilise /app/data dans Docker, sinon le répertoire local
+if os.path.exists('/app/data'):
+    DB_PATH = '/app/data/cadets.db'
+else:
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
+
+class DictCursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+    
+    def __iter__(self):
+        return self
+    
+    def __next__(self):
+        row = self.cursor.__next__()
+        if row is None:
+            raise StopIteration
+        return {
+            description[0]: row[i]
+            for i, description in enumerate(self.cursor.description)
+        }
+
+class Connection:
+    def __init__(self, conn):
+        self.conn = conn
+    
+    def cursor(self):
+        return Cursor(self.conn.cursor())
+    
+    def commit(self):
+        return self.conn.commit()
+    
+    def rollback(self):
+        return self.conn.rollback()
+    
+    def close(self):
+        return self.conn.close()
+
+class Cursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.rows = None
+    
+    def execute(self, query, params=None):
+        # Convertir la requête de type PostgreSQL/MySQL en SQLite
+        query = query.replace('%s', '?')
+        query = query.replace('RETURNING id', '')
+        
+        if params is None:
+            self.cursor.execute(query)
+        else:
+            self.cursor.execute(query, params)
+        
+        return self
+    
+    def fetchone(self):
+        row = self.cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            description[0]: row[i]
+            for i, description in enumerate(self.cursor.description)
+        }
+    
+    def fetchall(self):
+        rows = self.cursor.fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                description[0]: row[i]
+                for i, description in enumerate(self.cursor.description)
+            })
+        return result
+    
+    def close(self):
+        return self.cursor.close()
+    
+    @property
+    def rowcount(self):
+        return self.cursor.rowcount
+    
+    def __iter__(self):
+        self.rows = self.fetchall()
+        self.index = 0
+        return self
+    
+    def __next__(self):
+        if self.rows is None or self.index >= len(self.rows):
+            raise StopIteration
+        row = self.rows[self.index]
+        self.index += 1
+        return row
 
 # Emplacement de la base de données SQLite
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cadets.db')
@@ -235,7 +325,7 @@ def init_db():
         # Add default inventory category if none exists
         cur.execute("SELECT COUNT(*) as count FROM inventory_categories")
         result = cur.fetchone()
-        if result['count'] == 0:
+        if result and result['count'] == 0:
             cur.execute("""
                 INSERT INTO inventory_categories (name, description)
                 VALUES (?, ?)
@@ -306,7 +396,7 @@ def init_db():
         # Insert default evaluation types if none exist
         cur.execute("SELECT COUNT(*) as count FROM evaluation_types")
         result = cur.fetchone()
-        if result['count'] == 0:
+        if result and result['count'] == 0:
             default_types = [
                 ('Comportement', 1, 5, 'Évaluation du comportement général'),
                 ('Participation', 1, 5, 'Niveau de participation aux activités'),
@@ -368,20 +458,21 @@ def init_db():
                 cur.execute("SELECT last_insert_rowid() as id")
                 role_result = cur.fetchone()
             
-            role_id = role_result['id']
-            
-            # Ajouter les permissions
-            for perm in permissions:
-                cur.execute("SELECT id FROM permissions WHERE name = ?", (perm,))
-                perm_result = cur.fetchone()
-                if perm_result:
-                    try:
-                        cur.execute("""
-                            INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
-                            VALUES (?, ?)
-                        """, (role_id, perm_result['id']))
-                    except Exception as e:
-                        logging.warning(f"Erreur lors de l'ajout de la permission {perm} au rôle {role_name}: {str(e)}")
+            if role_result:
+                role_id = role_result['id']
+                
+                # Ajouter les permissions
+                for perm in permissions:
+                    cur.execute("SELECT id FROM permissions WHERE name = ?", (perm,))
+                    perm_result = cur.fetchone()
+                    if perm_result:
+                        try:
+                            cur.execute("""
+                                INSERT OR IGNORE INTO role_permissions (role_id, permission_id)
+                                VALUES (?, ?)
+                            """, (role_id, perm_result['id']))
+                        except Exception as e:
+                            logging.warning(f"Erreur lors de l'ajout de la permission {perm} au rôle {role_name}: {str(e)}")
 
         # Create default admin user if it doesn't exist
         cur.execute("SELECT * FROM users WHERE email = 'admin@admin.com'")
@@ -397,19 +488,21 @@ def init_db():
             
             # Get the last inserted id
             cur.execute("SELECT last_insert_rowid() as id")
-            admin_id = cur.fetchone()['id']
+            admin_id_row = cur.fetchone()
+            if admin_id_row:
+                admin_id = admin_id_row['id']
 
-            # Assign admin role
-            cur.execute("SELECT id FROM roles WHERE name = 'admin'")
-            admin_role = cur.fetchone()
-            if admin_role:
-                try:
-                    cur.execute("""
-                        INSERT OR IGNORE INTO user_roles (user_id, role_id)
-                        VALUES (?, ?)
-                    """, (admin_id, admin_role['id']))
-                except Exception as e:
-                    logging.warning(f"Erreur lors de l'ajout du rôle admin à l'utilisateur admin: {str(e)}")
+                # Assign admin role
+                cur.execute("SELECT id FROM roles WHERE name = 'admin'")
+                admin_role = cur.fetchone()
+                if admin_role:
+                    try:
+                        cur.execute("""
+                            INSERT OR IGNORE INTO user_roles (user_id, role_id)
+                            VALUES (?, ?)
+                        """, (admin_id, admin_role['id']))
+                    except Exception as e:
+                        logging.warning(f"Erreur lors de l'ajout du rôle admin à l'utilisateur admin: {str(e)}")
 
         conn.commit()
         logging.info("Base de données SQLite initialisée avec succès!")
